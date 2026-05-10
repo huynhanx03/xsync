@@ -93,7 +93,7 @@ retry:
 			goto retry
 		}
 
-		curKey := targetSlot.Key
+		curKey := atomicLoadSlotKey(targetSlot)
 		if curKey != hash {
 			goto retry
 		}
@@ -171,10 +171,10 @@ func (m *Map[K, V]) findKeyInLinks(idx *index[K, V], pb *PrimaryBucket[K, V], h0
 
 // findKeyInLinkBucket probe link bucket for key
 func (m *Map[K, V]) findKeyInLinkBucket(b *LinkBucket[K, V], vm4 uint32, key K, hash uint64, baseSlotIdx int) (int, *Slot[K, V], *Entry[K, V]) {
-	k0 := b.Slots[0].Key
-	k1 := b.Slots[1].Key
-	k2 := b.Slots[2].Key
-	k3 := b.Slots[3].Key
+	k0 := atomicLoadSlotKey(b.slotAt(0))
+	k1 := atomicLoadSlotKey(b.slotAt(1))
+	k2 := atomicLoadSlotKey(b.slotAt(2))
+	k3 := atomicLoadSlotKey(b.slotAt(3))
 
 	// Creates spread bitmap with bit_{i*2} set for slot_i with matching hash
 	eq := (b2u32(k0 == hash) << 0) |

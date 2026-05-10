@@ -83,9 +83,9 @@ func (m *Map[K, V]) Contains(key K) bool {
 // The match bitmap has bits set only at positions 0, 2, 4 so ANDing with (uint32(h) >> 1)
 // will match the valid bits in the header to the corresponding bits in the bitmap.
 func (m *Map[K, V]) matchPrimaryBucketKeys(pb *PrimaryBucket[K, V], h Header, hash uint64) uint32 {
-	k0 := pb.Slots[0].Key
-	k1 := pb.Slots[1].Key
-	k2 := pb.Slots[2].Key
+	k0 := atomicLoadSlotKey(pb.slotAt(0))
+	k1 := atomicLoadSlotKey(pb.slotAt(1))
+	k2 := atomicLoadSlotKey(pb.slotAt(2))
 
 	bitmap := (b2u32(k0 == hash) << 0) |
 		(b2u32(k1 == hash) << 2) |
@@ -135,10 +135,10 @@ func (m *Map[K, V]) scanLinksForKey(idx *index[K, V], pb *PrimaryBucket[K, V], h
 }
 
 func probeLinkBucket[K Key, V any](b *LinkBucket[K, V], vm4 uint32, key K, hash uint64) *Entry[K, V] {
-	k0 := b.Slots[0].Key
-	k1 := b.Slots[1].Key
-	k2 := b.Slots[2].Key
-	k3 := b.Slots[3].Key
+	k0 := atomicLoadSlotKey(b.slotAt(0))
+	k1 := atomicLoadSlotKey(b.slotAt(1))
+	k2 := atomicLoadSlotKey(b.slotAt(2))
+	k3 := atomicLoadSlotKey(b.slotAt(3))
 
 	eq := (b2u32(k0 == hash) << 0) |
 		(b2u32(k1 == hash) << 2) |

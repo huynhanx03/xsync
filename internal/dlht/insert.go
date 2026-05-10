@@ -87,7 +87,7 @@ retry:
 		goto retry
 	}
 
-	slot.Key = hash
+	atomicStoreSlotKey(slot, hash)
 	entry := &Entry[K, V]{Key: key, Value: value}
 	atomicStoreSlotVal(slot, entry) // We must release-store the entry to synchronize with any concurrent reads
 
@@ -172,7 +172,7 @@ func (m *Map[K, V]) unreserveSlot(idx *index[K, V], pb *PrimaryBucket[K, V], i i
 
 		// We still exclusively own SlotTrying; clear the value before releasing the slot
 		if slot := idx.getSlotByIndex(pb, i); slot != nil {
-			slot.Val = nil
+			atomicStoreSlotVal(slot, nil)
 		}
 
 		newH := h.setSlotStateAndVersion(i, SlotInvalid)

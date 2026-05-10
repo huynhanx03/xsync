@@ -83,7 +83,7 @@ retry:
 			goto retry
 		}
 
-		curKey := targetSlot.Key
+		curKey := atomicLoadSlotKey(targetSlot)
 		if curKey != hash {
 			goto retry
 		}

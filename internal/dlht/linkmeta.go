@@ -54,3 +54,7 @@ func atomicLoadLinkMeta(addr *LinkMeta) LinkMeta { return LinkMeta(atomic.LoadUi
 func atomicCASLinkMeta(addr *LinkMeta, old, neu LinkMeta) bool {
 	return atomic.CompareAndSwapUint64((*uint64)(addr), uint64(old), uint64(neu))
 }
+
+func atomicStoreLinkMeta(addr *LinkMeta, lm LinkMeta) {
+	atomic.StoreUint64((*uint64)(addr), uint64(lm))
+}

@@ -156,7 +156,7 @@ func (m *Map[K, V]) transferBin(ctx *resizeContext[K, V], binIndex uint64) {
 	m.transferValidSlots(ctx, h.validMask3(), oldBin.slotAt(0), sentinel)
 
 	// Transfer valid link slots
-	lm := oldBin.LinkMeta // plain load safe: no new links after BinInTransfer
+	lm := atomicLoadLinkMeta(&oldBin.LinkMeta)
 	if s := lm.getSingle(); s != NO_LINK {
 		m.transferValidSlots(ctx, h.validMask4(PRIMARY_SLOTS), ctx.oldIndex.getLinkBucket(s).slotAt(0), sentinel)
 	}
@@ -177,11 +177,11 @@ func (m *Map[K, V]) transferValidSlots(ctx *resizeContext[K, V], vm uint32, base
 		slotIdx := bits.TrailingZeros32(vm) >> 1
 		slot := (*Slot[K, V])(unsafe.Add(unsafe.Pointer(baseSlot), uintptr(slotIdx)*unsafe.Sizeof(*baseSlot)))
 
-		keyHash := slot.Key
+		keyHash := atomicLoadSlotKey(slot)
 
 		// We must make sure other threads observe the sentinel before we load the latest slot entry
 		// So this must be a sequentially consistent atomic store to be ordered before the next load
-		atomic.StoreUint64(&slot.Key, sentinel)
+		atomicStoreSlotKey(slot, sentinel)
 
 		entry := atomicLoadSlotVal(slot)
 		if entry != nil {
@@ -202,15 +202,15 @@ func (m *Map[K, V]) insertIntoNewIndex(ctx *resizeContext[K, V], idx *index[K, V
 
 	// Plain stores are safe here on the slot and header since no concurrent operations
 	// will access this bucket until the bin is marked as BinDoneTransfer which acts as the release barrier
-	slot.Key = hash
-	slot.Val = entry
+	atomicStoreSlotKey(slot, hash)
+	atomicStoreSlotVal(slot, entry)
 
 	pb.Header = pb.Header.setSlotStateAndVersion(slotIndex, SlotValid)
 }
 
 func (ctx *resizeContext[K, V]) findFreeSlotOrChain(pb *PrimaryBucket[K, V]) int {
-	h := pb.Header
-	lm := pb.LinkMeta
+	h := atomicLoadHeader(&pb.Header)
+	lm := atomicLoadLinkMeta(&pb.LinkMeta)
 
 	// Check primary slots using bitmask (matches chooseInsertSlot pattern)
 	if mask := h.invalidMask3(); mask != 0 {
@@ -269,7 +269,7 @@ func (ctx *resizeContext[K, V]) nextLinkPairForResize() uint32 {
 func (ctx *resizeContext[K, V]) attachSingleForResize(pb *PrimaryBucket[K, V]) uint32 {
 	linkIdx := ctx.nextSingleLinkForResize()
 	// Plain store is safe, this should only be called during resize
-	pb.LinkMeta = pb.LinkMeta.setSingle(linkIdx)
+	atomicStoreLinkMeta(&pb.LinkMeta, atomicLoadLinkMeta(&pb.LinkMeta).setSingle(linkIdx))
 	return linkIdx
 }
 
@@ -277,6 +277,6 @@ func (ctx *resizeContext[K, V]) attachSingleForResize(pb *PrimaryBucket[K, V]) u
 func (ctx *resizeContext[K, V]) attachPairForResize(pb *PrimaryBucket[K, V]) uint32 {
 	ps := ctx.nextLinkPairForResize()
 	// Plain store is safe, this should only be called during resize
-	pb.LinkMeta = pb.LinkMeta.setPairStart(ps)
+	atomicStoreLinkMeta(&pb.LinkMeta, atomicLoadLinkMeta(&pb.LinkMeta).setPairStart(ps))
 	return ps
 }

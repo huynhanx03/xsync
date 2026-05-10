@@ -57,6 +57,14 @@ func atomicStoreSlotVal[K Key, V any](slot *Slot[K, V], entry *Entry[K, V]) {
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&slot.Val)), unsafe.Pointer(entry))
 }
 
+func atomicLoadSlotKey[K Key, V any](slot *Slot[K, V]) uint64 {
+	return atomic.LoadUint64(&slot.Key)
+}
+
+func atomicStoreSlotKey[K Key, V any](slot *Slot[K, V], key uint64) {
+	atomic.StoreUint64(&slot.Key, key)
+}
+
 // validMask3 returns a spread bitmask indicating which of the first 3 slots are valid (state == 2).
 // Bits are at positions 0, 2, 4 (not compacted to 0, 1, 2). Use bits.TrailingZeros32(mask) >> 1
 // to convert to a slot index.
