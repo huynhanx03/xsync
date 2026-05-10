@@ -89,6 +89,26 @@ m.RangeRelaxed(func(key int, value int) bool {
 })
 ```
 
+### DLHT
+
+A `DLHT` is a concurrent hash table with lock-free reads, bounded overflow chains, and cooperative resize.
+
+```go
+m := xsync.NewDLHT[string, int](xsync.WithDLHTPresize(1024))
+m.Store("foo", 1)
+v, ok := m.Load("foo")
+old, loaded := m.LoadAndStore("foo", 2)
+deleted, existed := m.LoadAndDelete("foo")
+_ = v
+_ = ok
+_ = old
+_ = loaded
+_ = deleted
+_ = existed
+```
+
+`DLHT` exposes a map-like API (`Load`, `Store`, `LoadOrStore`, `LoadAndStore`, `LoadAndDelete`, `Delete`, `Range`, `All`, `Size`, `Stats`) and is a separate type from `Map`.
+
 ### UMPSCQueue
 
 A `UMPSCQueue` is an unbounded multi-producer single-consumer concurrent queue. This means that multiple goroutines can publish items to the queue while not more than a single goroutine must be consuming those items. Unlike bounded queues, this one puts no limit to the queue capacity.
