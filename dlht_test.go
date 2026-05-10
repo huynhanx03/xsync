@@ -60,3 +60,37 @@ func TestDLHT_AllAndRange(t *testing.T) {
 		t.Fatalf("All saw %d keys, want 32", count)
 	}
 }
+
+func BenchmarkDLHT_WarmUp(b *testing.B) {
+	const entries = 1000
+	keys := make([]string, entries)
+	for i := 0; i < entries; i++ {
+		keys[i] = "k" + strconv.Itoa(i)
+	}
+
+	for _, readPct := range []int{100, 99, 90, 75} {
+		b.Run("reads="+strconv.Itoa(readPct)+"%", func(b *testing.B) {
+			m := NewDLHT[string, int](WithDLHTPresize(entries))
+			for i, k := range keys {
+				m.Store(k, i)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				i := 0
+				for pb.Next() {
+					idx := i % entries
+					k := keys[idx]
+					if i%100 < readPct {
+						m.Load(k)
+					} else if i&1 == 0 {
+						m.Store(k, idx)
+					} else {
+						m.Delete(k)
+					}
+					i++
+				}
+			})
+		})
+	}
+}
