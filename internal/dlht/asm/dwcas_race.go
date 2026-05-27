@@ -10,6 +10,11 @@ import (
 
 type slotWords struct {
 	Key uint64
+	Val uint64
+}
+
+type slotPtrWords struct {
+	Key uint64
 	Val unsafe.Pointer
 }
 
@@ -31,12 +36,12 @@ func DWCAS(slot unsafe.Pointer, oldKey, oldVal, newKey, newVal uint64) bool {
 
 	w := (*slotWords)(slot)
 	curKey := atomic.LoadUint64(&w.Key)
-	curVal := atomic.LoadPointer(&w.Val)
-	if curKey != oldKey || uint64(uintptr(curVal)) != oldVal {
+	curVal := atomic.LoadUint64(&w.Val)
+	if curKey != oldKey || curVal != oldVal {
 		return false
 	}
 	atomic.StoreUint64(&w.Key, newKey)
-	atomic.StorePointer(&w.Val, unsafe.Pointer(uintptr(newVal)))
+	atomic.StoreUint64(&w.Val, newVal)
 	return true
 }
 
@@ -47,7 +52,7 @@ func DWCASPtr(slot unsafe.Pointer, oldKey uint64, oldVal unsafe.Pointer, newKey 
 	mu.Lock()
 	defer mu.Unlock()
 
-	w := (*slotWords)(slot)
+	w := (*slotPtrWords)(slot)
 	curKey := atomic.LoadUint64(&w.Key)
 	curVal := atomic.LoadPointer(&w.Val)
 	if curKey != oldKey || curVal != oldVal {

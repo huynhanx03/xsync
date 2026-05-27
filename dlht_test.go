@@ -2,6 +2,7 @@ package xsync_test
 
 import (
 	"strconv"
+	"sync"
 	"testing"
 
 	. "github.com/puzpuzpuz/xsync/v4"
@@ -61,6 +62,38 @@ func TestDLHT_AllAndRange(t *testing.T) {
 	}
 }
 
+func TestDLHT_EngineSelection(t *testing.T) {
+	mInline := NewDLHT[uint64, uint64]()
+	if got := mInline.Stats().Engine; got != "inline64" {
+		t.Fatalf("Engine for uint64/uint64 = %q, want inline64", got)
+	}
+
+	mGeneric := NewDLHT[string, int]()
+	if got := mGeneric.Stats().Engine; got != "generic" {
+		t.Fatalf("Engine for string/int = %q, want generic", got)
+	}
+}
+
+func TestDLHT_InlineSignedKeyRoundTrip(t *testing.T) {
+	m := NewDLHT[int64, int64]()
+	m.Store(-7, 11)
+
+	v, ok := m.Load(-7)
+	if !ok || v != 11 {
+		t.Fatalf("Load(-7)=(%d,%v), want (11,true)", v, ok)
+	}
+
+	old, loaded := m.LoadAndStore(-7, 22)
+	if !loaded || old != 11 {
+		t.Fatalf("LoadAndStore(-7,22)=(%d,%v), want (11,true)", old, loaded)
+	}
+
+	del, ok := m.LoadAndDelete(-7)
+	if !ok || del != 22 {
+		t.Fatalf("LoadAndDelete(-7)=(%d,%v), want (22,true)", del, ok)
+	}
+}
+
 func BenchmarkDLHT_WarmUp(b *testing.B) {
 	const entries = 1000
 	keys := make([]string, entries)
@@ -93,4 +126,163 @@ func BenchmarkDLHT_WarmUp(b *testing.B) {
 			})
 		})
 	}
+}
+
+func BenchmarkDLHT64_WriteHeavy(b *testing.B) {
+	const entries = 100_000
+	keys := make([]uint64, entries)
+	for i := range entries {
+		keys[i] = uint64(i + 1)
+	}
+
+	for _, bench := range []struct {
+		name string
+		run  func(*testing.B, []uint64)
+	}{
+		{name: "dlht", run: benchmarkDLHT64WriteHeavy},
+		{name: "xsync", run: benchmarkXSync64WriteHeavy},
+		{name: "sync.Map", run: benchmarkSyncMap64WriteHeavy},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			bench.run(b, keys)
+		})
+	}
+}
+
+func BenchmarkDLHT64_InsDelPutHeavy(b *testing.B) {
+	const entries = 100_000
+	keys := make([]uint64, entries)
+	for i := range entries {
+		keys[i] = uint64(i + 1)
+	}
+
+	b.Run("dlht", func(b *testing.B) {
+		m := NewDLHT[uint64, uint64](WithDLHTPresize(len(keys)))
+		for _, k := range keys[:entries/2] {
+			m.Insert(k, k)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			i := 0
+			for pb.Next() {
+				k := keys[i%len(keys)]
+				switch i % 10 {
+				case 0, 1:
+					m.Load(k)
+				case 2, 3, 4:
+					m.Insert(k, k+1)
+				case 5, 6:
+					m.Delete(k)
+				default:
+					m.Put(k, k+2)
+				}
+				i++
+			}
+		})
+	})
+
+	b.Run("xsync", func(b *testing.B) {
+		m := NewMap[uint64, uint64](WithPresize(len(keys)))
+		for _, k := range keys[:entries/2] {
+			m.LoadOrStore(k, k)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			i := 0
+			for pb.Next() {
+				k := keys[i%len(keys)]
+				switch i % 10 {
+				case 0, 1:
+					m.Load(k)
+				case 2, 3, 4:
+					m.LoadOrStore(k, k+1)
+				case 5, 6:
+					m.Delete(k)
+				default:
+					m.LoadAndStore(k, k+2)
+				}
+				i++
+			}
+		})
+	})
+}
+
+func benchmarkDLHT64WriteHeavy(b *testing.B, keys []uint64) {
+	m := NewDLHT[uint64, uint64](WithDLHTPresize(len(keys)))
+	for _, k := range keys {
+		m.Store(k, k)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			k := keys[i%len(keys)]
+			switch i % 10 {
+			case 0:
+				m.Load(k)
+			case 1, 2, 3, 4:
+				m.Store(k, k+1)
+			case 5, 6, 7, 8:
+				m.Delete(k)
+			default:
+				m.LoadOrStore(k, k)
+			}
+			i++
+		}
+	})
+}
+
+func benchmarkXSync64WriteHeavy(b *testing.B, keys []uint64) {
+	m := NewMap[uint64, uint64](WithPresize(len(keys)))
+	for _, k := range keys {
+		m.Store(k, k)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			k := keys[i%len(keys)]
+			switch i % 10 {
+			case 0:
+				m.Load(k)
+			case 1, 2, 3, 4:
+				m.Store(k, k+1)
+			case 5, 6, 7, 8:
+				m.Delete(k)
+			default:
+				m.LoadOrStore(k, k)
+			}
+			i++
+		}
+	})
+}
+
+func benchmarkSyncMap64WriteHeavy(b *testing.B, keys []uint64) {
+	var m sync.Map
+	for _, k := range keys {
+		m.Store(k, k)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			k := keys[i%len(keys)]
+			switch i % 10 {
+			case 0:
+				m.Load(k)
+			case 1, 2, 3, 4:
+				m.Store(k, k+1)
+			case 5, 6, 7, 8:
+				m.Delete(k)
+			default:
+				m.LoadOrStore(k, k)
+			}
+			i++
+		}
+	})
 }
